@@ -241,11 +241,13 @@ class ExosComponent extends Component {
         this._fileName = fileName;
         this._typeFileName = `${typeName}.typ`;
 
-        this._typFile = {name:this._typeFileName, contents:fs.readFileSync(fileName).toString(), description:`${typeName} datamodel declaration`}
+        
         this._SG4Includes = [`${typeName.substr(0,10)}.h`];
 
         this._datamodel = new Datamodel(fileName, typeName, this._SG4Includes);
-       
+        
+        this._typFile = {name:this._typeFileName, contents:fs.readFileSync(fileName).toString(), description:`${typeName} datamodel declaration`}
+
         this._iecProgram = this._exospackage.getNewIECProgram(`${typeName.substr(0,10)}_0`,`${typeName} application`);
 
         this._cLibrary = this._exospackage.getNewCLibrary(typeName.substr(0,10), `${typeName} exOS library`);
