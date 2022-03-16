@@ -183,6 +183,8 @@ class Datamodel {
             throw(`Datamodel: file does not exist: ${fileName}`);
         }
 
+        this._accessExtDatatyps(this.fileName);
+
         //read the file
         this.fileLines = fs.readFileSync(this.fileName).toString();
         //remove stuff we dont want to look at
@@ -197,7 +199,7 @@ class Datamodel {
 
         //create the objects that the class exposes
         //the sequence of the calls cannot be changed
-        this.dataset = this._makeJsonTypes(this.fileName);
+        this.dataset = this._makeJsonTypes();
         this.sourceFile.contents = this._makeSource();
         this.dataTypeCode = this._makeDataTypes();
         this.dataTypeCodeSWIG = this._makeDataTypes(true);
@@ -286,7 +288,7 @@ class Datamodel {
         }
     }
 
-/** KSP
+    /** 
      * Searches for .typ files in project path
      * 
      * @typedef getTypeFileList
@@ -828,7 +830,7 @@ class Datamodel {
      * Internal function which parses the IEC datatype `typeName` and generates a JSON structure for further usage.
      * @returns {object} JSON object representation of the datatype `typeName` structure
      */
-    _makeJsonTypes(fileName) {
+    _makeJsonTypes() {
  
         let nestingDepth = 0;
         let structNestingDepth = 0;
@@ -840,119 +842,6 @@ class Datamodel {
         */
         function _parseTyp(fileLines, name, type, comment, arraySize) {
 
-            function _addSuffixInTypMember(fileLines, typName) {
-                let i = 0;
-                let typ = typName.toString();
-                for(let line of fileLines) {
-                    if (line.includes(typ)) {
-                        let l = line.split(":")[1].split("(*")[0].trim();
-                        if (l == typ) {
-                            let newTyp = typ.concat("_exos");
-                            fileLines[i] = fileLines[i].replace(typName, newTyp);   
-                        }
-                    }
-                    i++;
-                }
-                return 0;          
-            }
-
-            function _writeExtDataIntoSrcFile(srcFileData, extFileData, typName) {
-
-                let TypStr = typName.toString();
-                let index = extFileData.indexOf(TypStr);
-                let str = extFileData.slice(index).split(":")[0].trim();
-                // Remove unnecessary data up to start of data type
-                while (str != TypStr) {
-                    extFileData = extFileData.slice((index + TypStr.length));
-                    index = extFileData.indexOf(TypStr);
-                    str = extFileData.slice(index).split(":")[0].trim();
-                }
-                extFileData = extFileData.slice((index + TypStr.length));
-                
-
-
-                // Find End point of external data type 
-                index = extFileData.indexOf("END_STRUCT") + "END_STRUCT".length;
-                // Remove unnecessary data after ending of data type
-                extFileData = extFileData.slice(0, index);
-
-                // Add suffix in data type name
-                TypStr = TypStr.concat("_exos");
-                // Prepare data in proper format
-                TypStr = "\t".concat(TypStr);
-                extFileData = TypStr.concat(extFileData);
-                extFileData = extFileData.concat(";\r\nEND_TYPE\r\n"); 
-                
-                // Add suffix in type member name in source data
-                TypStr = typName.toString();
-                let newTypStr = TypStr.concat("_exos");
-                let re = new RegExp(TypStr, 'g');
-                srcFileData = srcFileData.replace(re, newTypStr);
-
-                // Search end of file END_TYPE
-                index = srcFileData.indexOf("END_TYPE");
-                srcFileData = srcFileData.slice(0, index);
-
-                // Merge external type data in to original source data
-                srcFileData = srcFileData.concat(extFileData);
-
-                return srcFileData;
-            }
-
-            function _findExtTyp(fileLines, typName) {
-                let extTypFiles = Datamodel.getTypeFileList(fileName);  
-                let structFound = false;
-                let extStructLine = -1;
-                let extLines = [];
-                for (let extTypFile of extTypFiles) {
-                    // Read data of each file and convert it to string
-                    let extFileData = fs.readFileSync(extTypFile).toString();
-                    let extFileLines = Datamodel._splitLines(extFileData);             //Split string data in to lines
-                    
-                    for (let extFileline of extFileLines) {
-                        //trim down to match the type name EXACTLY to specified name, 
-                        //includes() is also true for "myStruct" == "myStructSomething"
-                        let l = extFileline.split(":")[0].trim();
-                        //Find start point of structure
-                        if ((l == typName) && (extFileline.includes("STRUCT"))) {
-                            structFound = true;
-                            // Add suffix _exos in all type member
-                            _addSuffixInTypMember(fileLines, typName);
-                            // Add lines to external line array 
-                            l = l.concat("_exos");
-                            extLines.push(extFileline.replace(typName, l));
-                        }
-                        else if ((extFileline.includes("END_STRUCT")) && structFound) {
-                            // Add lines to external line array
-                            extLines.push(extFileline);
-                            // Remove blank space ('') at the end of fileLines
-                            fileLines.pop();
-                            // Recoed start Line at which external structure will be added
-                            extStructLine = fileLines.length; 
-                            // Remove END_TYP from fileLines
-                            fileLines.pop();
-                            // Push all external structure lines in to main fileLine array
-                            for (let extline of extLines) {
-                                fileLines.push(extline);
-                            }
-                            // Push end of type file END_TYPE
-                            fileLines.push("END_TYPE");
-                            fileLines.push("");
-
-                            // Read source .typ file
-                            let srcFileData = fs.readFileSync(fileName).toString();
-                            // Write Modified data in .typ file
-                            fs.writeFileSync(fileName, _writeExtDataIntoSrcFile(srcFileData, extFileData, typName));
-                            return extStructLine;
-                        }
-                        else if (structFound) {
-                            extLines.push(extFileline);            
-                        }
-    
-                    }
-                }
-                return -1;    
-            }
             /**find a structure (typName) within the fileLines[] and return the line index. return -1 if not found*/
             function _findStructTyp(fileLines, typName) {
                 let i = 0;
@@ -963,11 +852,6 @@ class Datamodel {
                         return i;
                     }
                     i++;
-                }
-
-                let result = _findExtTyp(fileLines, typName);
-                if (result >= 0) {
-                    return result;
                 }
                 return -1;
             }
@@ -1229,6 +1113,400 @@ class Datamodel {
         }
 
         return _parseTyp(this.fileLines, "<NAME>", this.typeName, "", 0);
+    }
+
+
+    /**
+     * Internal function which parses the external IEC datatype `typeName` and recreates .typ file for further usage.
+     * 
+     */
+    _accessExtDatatyps(fileName) {
+
+        let nestingDepth = 0;
+        let structNestingDepth = 0;
+
+        /**
+         * return a json object with members of the given structure (name, type) going through fileLines including comment and arraysize of this structure
+         * the search continues until scalar types or enumerators are found. nestingDepth and structuNEstingDepth are control variables to make sure it
+         * doesnt go too far (e.g. circular dependencies)
+        */
+        function _parseExtTyp(fileLines, type) {
+
+            function _addSuffixInTypMember(fileLines, typName) {
+                let i = 0;
+                let typ = typName.toString();
+                for(let line of fileLines) {
+                    if (line.includes(typ)) {
+                        let l = line.split(":")[1].split("(*")[0].trim();
+                        if (l == typ) {
+                            let newTyp = typ.concat("_exos");
+                            fileLines[i] = fileLines[i].replace(typName, newTyp);   
+                        }
+                    }
+                    i++;
+                }
+                return 0;          
+            }
+
+            function _writeExtDataIntoSrcFile(srcFileData, extFileData, typName, isEnum) {
+
+                let TypStr = typName.toString();
+                let index = extFileData.indexOf(TypStr);
+                let str = extFileData.slice(index).split(":")[0].trim();
+                // Remove unnecessary data up to start of data type
+                while (str != TypStr) {
+                    extFileData = extFileData.slice((index + TypStr.length));
+                    index = extFileData.indexOf(TypStr);
+                    str = extFileData.slice(index).split(":")[0].trim();
+                }
+                extFileData = extFileData.slice((index + TypStr.length));
+
+                // Find End point of external data type 
+                if (isEnum) {
+                    index = extFileData.indexOf(");") + ")".length;
+                }
+                else {
+                    index = extFileData.indexOf("END_STRUCT") + "END_STRUCT".length;
+                }
+                
+                // Remove unnecessary data after ending of data type
+                extFileData = extFileData.slice(0, index);
+
+                // Add suffix in data type name
+                TypStr = TypStr.concat("_exos");
+                // Prepare data in proper format
+                TypStr = "\t".concat(TypStr);
+                extFileData = TypStr.concat(extFileData);
+                extFileData = extFileData.concat(";\r\nEND_TYPE\r\n"); 
+                
+                // Add suffix in type member name in source data
+                TypStr = typName.toString();
+                let newTypStr = TypStr.concat("_exos");
+                let re = new RegExp(TypStr, 'g');
+                srcFileData = srcFileData.replace(re, newTypStr);
+
+                // Search end of file END_TYPE
+                index = srcFileData.indexOf("END_TYPE");
+                srcFileData = srcFileData.slice(0, index);
+
+                // Merge external type data in to original source data
+                srcFileData = srcFileData.concat(extFileData);
+
+                return srcFileData;
+            }
+
+            function _findExtStructTyp(fileLines, typName) {
+                let extTypFiles = Datamodel.getTypeFileList(fileName);  
+                let structFound = false;
+                let extStructLine = -1;
+                let extLines = [];
+                for (let extTypFile of extTypFiles) {
+                    // Read data of each file and convert it to string
+                    let extFileData = fs.readFileSync(extTypFile).toString();
+                    let extFileLines = Datamodel._splitLines(extFileData);             //Split string data in to lines
+                    
+                    for (let extFileline of extFileLines) {
+                        //trim down to match the type name EXACTLY to specified name, 
+                        //includes() is also true for "myStruct" == "myStructSomething"
+                        let l = extFileline.split(":")[0].trim();
+                        //Find start point of structure
+                        if ((l == typName) && (extFileline.includes("STRUCT"))) {
+                            structFound = true;
+                            // Add suffix _exos in all type member
+                            _addSuffixInTypMember(fileLines, typName);
+                            // Add lines to external line array 
+                            l = l.concat("_exos");
+                            extLines.push(extFileline.replace(typName, l));
+                        }
+                        else if ((extFileline.includes("END_STRUCT")) && structFound) {
+                            // Add lines to external line array
+                            extLines.push(extFileline);
+                            // Remove blank space ('') at the end of fileLines
+                            fileLines.pop();
+                            // Recoed start Line at which external structure will be added
+                            extStructLine = fileLines.length; 
+                            // Remove END_TYP from fileLines
+                            fileLines.pop();
+                            // Push all external structure lines in to main fileLine array
+                            for (let extline of extLines) {
+                                fileLines.push(extline);
+                            }
+                            // Push end of type file END_TYPE
+                            fileLines.push("END_TYPE");
+                            fileLines.push("");
+
+                            // Read source .typ file
+                            let srcFileData = fs.readFileSync(fileName).toString();
+                            // Write Modified data in .typ file
+                            fs.writeFileSync(fileName, _writeExtDataIntoSrcFile(srcFileData, extFileData, typName, false));
+                            return extStructLine;
+                        }
+                        else if (structFound) {
+                            extLines.push(extFileline);            
+                        }
+
+                    }
+                }
+                return -1;    
+            }
+
+            function _findExtEnumTyp(fileLines, typName) {
+                let extTypFiles = Datamodel.getTypeFileList(fileName);  
+                let enumFound = false;
+                let extEnumLine = -1;
+                let extLines = [];
+                for (let extTypFile of extTypFiles) {
+                    // Read data of each file and convert it to string
+                    let extFileData = fs.readFileSync(extTypFile).toString();
+                    let extFileLines = Datamodel._splitLines(extFileData);             //Split string data in to lines
+                    
+                    for (let extFileline of extFileLines) {
+                        //trim down to match the type name EXACTLY to specified name, 
+                        //includes() is also true for "myStruct" == "myStructSomething"
+                        let l = extFileline.split(":");
+                        if ((l.length > 1) || enumFound) {
+                            //Find start point of enum
+                            if ((l[0].trim() == typName) && (l[1].trim() == "") && (!extFileline.includes("STRUCT"))) {
+                                enumFound = true;
+                                // Add suffix _exos in all type member
+                                _addSuffixInTypMember(fileLines, typName);
+                                // Add lines to external line array 
+                                let newTypName = typName;
+                                newTypName = newTypName.concat("_exos"); 
+                                extLines.push(extFileline.replace(typName, newTypName));
+                            }
+                            else if ((extFileline.includes(")")) && enumFound) {
+                                // Add lines to external line array
+                                extLines.push(extFileline);
+                                // Remove blank space ('') at the end of fileLines
+                                fileLines.pop();
+                                // Recoed start Line at which external structure will be added
+                                extEnumLine = fileLines.length; 
+                                // Remove END_TYP from fileLines
+                                fileLines.pop();
+                                // Push all external structure lines in to main fileLine array
+                                for (let extline of extLines) {
+                                    fileLines.push(extline);
+                                }
+                                // Push end of type file END_TYPE
+                                fileLines.push("END_TYPE");
+                                fileLines.push("");
+
+                                // Read source .typ file
+                                let srcFileData = fs.readFileSync(fileName).toString();
+                                // Write Modified data in .typ file
+                                fs.writeFileSync(fileName, _writeExtDataIntoSrcFile(srcFileData, extFileData, typName, true));
+                                return extEnumLine;
+                            }
+                            else if (enumFound) {
+                                extLines.push(extFileline);
+                            }
+                        }
+                    }
+                }
+                return -1;    
+            }
+
+            /**find a structure (typName) within the fileLines[] and return the line index. return -1 if not found*/
+            function _findStructTyp(fileLines, typName) {
+                let i = 0;
+                for (let line of fileLines) {
+                    //trim down to match the type name EXACTLY to specified name, includes() is also true for "myStruct" == "myStructSomething"
+                    let l = line.split(":")[0].trim();
+                    if ((l == typName) && (line.includes("STRUCT"))) {
+                        return i;
+                    }
+                    i++;
+                }
+
+                let result = _findExtStructTyp(fileLines, typName);
+                if (result >= 0) {
+                    return result;
+                }
+                return -1;
+            }
+
+            /**find an enum (typName) within fileLines and return the line index. return -1 if not found */
+            function _findEnumTyp(fileLines, typName) {
+                let i = 0;
+                for (let line of fileLines) {
+                    //trim down to match the type name EXACTLY to specified name, includes() is also true for "myStruct" == "myStructSomething"
+                    let l = line.split(":");
+                    if(l.length > 1)
+                    {
+                        if ((l[0].trim() == typName) && (l[1].trim() == "") && (!line.includes("STRUCT"))) {
+                            return i;
+                        }
+                    }
+                    i++;
+                }
+
+                let result = _findExtEnumTyp(fileLines, typName);
+                if (result >= 0) {
+                    return result;
+                }
+
+                return -1;
+            }
+
+            /**find a directly derived type (typName) within the fileLines[] and return the line index. return -1 if not found*/
+            function _findDirectlyDerivedType(fileLines, typName) {
+                let i = 0;
+                for (let line of fileLines) {
+                    //trim down to match the type name EXACTLY to specified name, includes() is also true for "myStruct" == "myStructSomething"
+                    let l = line.split(":");
+                    if(l.length > 1)
+                    {
+                        if ((l[0].trim() == typName) && (l[1].trim() != "") && (!line.includes("STRUCT"))) {
+                            return i;
+                        }
+                    }
+                    i++;
+                }
+                return -1;
+            }
+
+             /** return a json object of the member at the given line, returns a 'variable' object for scalar types and calls _parseTyp (recursively) if a structure is found*/
+             function _parseStructMember(fileLines, index) {
+                
+                function _takeout(line, start, end) {
+                    if (line.includes(start) && line.includes(end)) {
+                        return line.split(start)[1].split(end)[0];
+                    }
+                    else return null;
+                }
+                
+                function plcTypeNotSupported(type)
+                {
+                    switch(type)
+                    {
+                        case "DATE":
+                        case "DATE_AND_TIME":
+                        case "DT":
+                        case "DWORD":
+                        case "TIME":
+                        case "TIME_OF_DAY":
+                        case "TOD":
+                        case "WORD":
+                        case "WSTRING":
+                            return true;
+                    }
+                    return false;
+                }
+
+                let arraySize = 0;
+                let dimensions = [0];
+            
+                if (fileLines[index].includes(":")) {
+                    let name = fileLines[index].split(":")[0].trim();
+            
+                    if (fileLines[index].includes("ARRAY")) {
+                        let ranges = _takeout(fileLines[index], "[", "]")
+                        dimensions = ranges.split(",");
+            
+                        if (dimensions.length > 1) {
+                            throw (`Multi dimensional arrays are not supported -> member "${name}"`);
+                        }
+                        if (ranges != null) {
+                            let fromStr = ranges.split("..")[0].trim()
+                            let toStr = ranges.split("..")[1].trim()
+
+                            if(isNaN(fromStr) || isNaN(toStr)) {
+                                throw (`Array with non-numeric bounds not supported -> member "${name}"`);
+                            }
+
+                            let from = parseInt(fromStr);
+                            let to = parseInt(toStr);
+
+                            if(from != 0) {
+                                throw (`Array bound not starting from 0 not supported -> member "${name}"`);
+                            } 
+
+                            arraySize = to - from + 1;
+                            nestingDepth += dimensions.length; //add a nesting depth for each dimention in multi-dim arrays
+                            if (nestingDepth > Datamodel.MAX_ARRAY_NEST) throw (`Member "${name}" has array nesting depth of ${nestingDepth} deeper than ${Datamodel.MAX_ARRAY_NEST} nests`);
+                        }
+                    }
+            
+                    let type = "";
+                    if (arraySize > 0) {
+                        type = fileLines[index].split(":")[1].split("OF")[1].trim();
+                    }
+                    else {
+                        type = fileLines[index].split(":")[1].trim();
+                    }
+                    if (type.includes("(*")) {
+                        type = type.split("(*")[0].trim();
+                    }
+            
+                    if(type.includes("REFERENCE")) {
+                        throw (`Referenced members are not supported -> member "${name}"`);
+                    }
+                    
+                    if(plcTypeNotSupported(type)) {
+                        throw (`IEC Type ${type} is not supported -> member "${name}"`);
+                    }
+
+                    let dataset = {dataType: type, type: "notenum"};
+                    if (type.includes("STRING")) {
+                      // Do nothing
+                    }
+                    else if (Datamodel.isScalarType(dataset)) {
+                       // Don Nothing
+                    }
+                    else {
+                        //datatype detected = dig deeper
+                        structNestingDepth++;
+                        _parseExtTyp(fileLines, type);
+                        structNestingDepth--;
+                        if (arraySize > 0) nestingDepth -= dimensions.length;
+                    }
+                }
+            }
+
+            let start;
+        
+            start = _findStructTyp(fileLines, type);
+            //this is a structure
+            if (start != -1) {
+                let i = 1;
+                while (!fileLines[start + i].includes("END_STRUCT")) {
+                    if (structNestingDepth > Datamodel.MAX_STRUCT_NEST)
+                    {
+                        throw (`Member "${name} : ${type}" has struct nesting depth of ${structNestingDepth} which exceeds the maximum of ${Datamodel.MAX_STRUCT_NEST} nests (possible recursion)`);
+                    }
+                    _parseStructMember(fileLines, start + i);
+                    i++;
+                }
+            }
+            //this is an enum
+            else {
+                start = _findEnumTyp(fileLines, type);
+                if (start != -1) {
+                    // enum found
+                } else {
+        
+                    if (_findDirectlyDerivedType(fileLines, type) >= 0) {
+                        //datatype was not found,in .typ file, if not kill with error
+                        throw (`Datatype '${type}' is a directly derived type. Not supported!`);
+                    } else {
+                        //datatype was not found,in .typ file, if not kill with error
+                        throw (`Datatype '${type}' not defined in .typ file`);
+                    }
+                }
+            }
+        }
+
+        //read the file
+        let fileLines = fs.readFileSync(fileName).toString();
+        //remove stuff we dont want to look at
+        fileLines = fileLines.split("\r").join("");
+        fileLines = fileLines.split(";").join("");
+        fileLines = fileLines.split("{REDUND_UNREPLICABLE}").join("");
+        //now split with line endings
+        fileLines = fileLines.split("\n");
+
+        _parseExtTyp(fileLines, this.typeName);
     }
 
 }
