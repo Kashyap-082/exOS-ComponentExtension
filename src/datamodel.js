@@ -1165,7 +1165,12 @@ class Datamodel {
                 if (isEnum) {
                     index = extFileData.indexOf(");") + ")".length;
                 }
-                else {
+                else { 
+                    // Find Index of STRUCT keyword
+                    index = extFileData.indexOf("STRUCT") + "STRUCT".length;
+                    //Remove unnecessary string
+                    extFileData = extFileData.slice(index);
+                    //Find End of structure
                     index = extFileData.indexOf("END_STRUCT") + "END_STRUCT".length;
                 }
                 
@@ -1176,12 +1181,14 @@ class Datamodel {
                 TypStr = TypStr.concat("_exos");
                 // Prepare data in proper format
                 TypStr = "\t".concat(TypStr);
+                TypStr = TypStr.concat("\t:\tSTRUCT\t(*IS_EXTERNAL*)");
                 extFileData = TypStr.concat(extFileData);
                 extFileData = extFileData.concat(";\r\nEND_TYPE\r\n"); 
                 
                 // Add suffix in type member name in source data
                 TypStr = typName.toString();
-                let newTypStr = TypStr.concat("_exos");
+                let newTypStr = TypStr.concat("_exos;\t(*IS_EXTERNAL*)");
+                TypStr = TypStr.concat(";");
                 let re = new RegExp(TypStr, 'g');
                 srcFileData = srcFileData.replace(re, newTypStr);
 
