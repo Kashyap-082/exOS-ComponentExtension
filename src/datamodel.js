@@ -1001,6 +1001,12 @@ class Datamodel {
                         throw (`IEC Type ${type} is not supported -> member "${name}"`);
                     }
 
+                    //Identify, Is an external data type or not?
+                    let IsExt = false;
+                    if(type.includes("_exos")){
+                        IsExt = true;
+                    }
+
                     let dataset = {dataType: type, type: "notenum"};
                     if (type.includes("STRING")) {
                         if (arraySize > 0) nestingDepth -= dimensions.length;
@@ -1014,7 +1020,8 @@ class Datamodel {
                                     dataType: "STRING",
                                     stringLength: parseInt(length) + 1,
                                     comment: comment,
-                                    arraySize: arraySize
+                                    arraySize: arraySize,
+                                    isexternal: IsExt
                                 }
                             }
                         }
@@ -1028,7 +1035,8 @@ class Datamodel {
                                 nodeId: "",
                                 dataType: type,
                                 comment: comment,
-                                arraySize: arraySize
+                                arraySize: arraySize,
+                                isexternal: IsExt
                             }
                         }
                     }
@@ -1062,6 +1070,10 @@ class Datamodel {
                     }
                     i++;
                 }
+                let IsExt = false;
+                if(type.includes("_exos")){
+                    IsExt = true;
+                }
                 return {
                     name: "struct",
                     attributes: {
@@ -1069,7 +1081,8 @@ class Datamodel {
                         nodeId: "",
                         dataType: type,
                         comment: comment,
-                        arraySize: arraySize
+                        arraySize: arraySize,
+                        isexternal: IsExt
                     },
                     children: children
                 }
@@ -1187,8 +1200,7 @@ class Datamodel {
                 
                 // Add suffix in type member name in source data
                 TypStr = typName.toString();
-                let newTypStr = TypStr.concat("_exos;\t(*IS_EXTERNAL*)");
-                TypStr = TypStr.concat(";");
+                let newTypStr = TypStr.concat("_exos");
                 let re = new RegExp(TypStr, 'g');
                 srcFileData = srcFileData.replace(re, newTypStr);
 
